@@ -19,8 +19,8 @@ Base = automap_base()
 Base.prepare(engine, reflect=True)
 
 # Save reference to the table
-Stations = Base.classes.stations
-Measurements = Base.classes.measurements
+Stations = Base.classes.station
+Measurements = Base.classes.measurement
 
 # Flask Setup
 app = Flask(__name__)
@@ -33,15 +33,16 @@ app = Flask(__name__)
 def welcome():
     """List all available api routes."""
     return (
-        f"Available Routes:<br/>"
+        f"<u><h3>Available Routes</h3></u>"
+        "<strong>*input dates as yyyy-mm-dd</strong><br/>"
         f"/api/v1.0/precipitation<br/>"
         f"/api/v1.0/stations<br/>"
-        f"/api/v1.0/<start><br/>"
-        f"/api/v1.0/<start>/<end>"
+        f"/api/v1.0/&ltstart><br/>"
+        f"/api/v1.0/&ltstart>/&ltend>"
     )
 
 @app.route("/api/v1.0/precipitation")
-def names():
+def precipitations():
     # Create our session (link) from Python to the DB
     session = Session(engine)
 
@@ -64,7 +65,7 @@ def names():
 
 
 @app.route("/api/v1.0/stations")
-def passengers():
+def stations():
     # Create our session (link) from Python to the DB
     session = Session(engine)
 
@@ -89,13 +90,13 @@ def passengers():
 
 
 @app.route("/api/v1.0/tobs")
-def passengers():
+def tobs():
     # Create our session (link) from Python to the DB
     session = Session(engine)
 
     """Return a JSON list of tobs from the dataset."""
     # Query the dates and temperature observations of the most-active station for the previous year of data.
-    results = session.query(Measurements.date, Measurements.tobs).all()
+    results = session.query(Measurements.date, Measurements.tobs)\
                      .filter(Measurements.date > '2016-08-23')\
                      .order_by(Measurements.date).all()
 
@@ -110,6 +111,47 @@ def passengers():
         all_tobs.append(tobs_dict)
 
     return jsonify(all_tobs)
+
+
+@app.route("/api/v1.0/<start>")
+def start_date(start):
+    # Create our session (link) from Python to the DB
+    session = Session(engine)
+
+    """start date"""
+    # Return a JSON list of the minimum temperature, the average temperature,
+    # and the maximum temperature for a specified start or start-end range.
+    low_high_avg = session.query(func.min(Measurements.tobs), \
+                                 func.max(Measurements.tobs), \
+                                 func.avg(Measurements.tobs)) \
+                          .filter(Measurements.date > start).first()
+
+    session.close()
+
+    return jsonify({"TMIN": str(low_high_avg[0]),
+                    "TAVG": str(low_high_avg[1]),
+                    "TMAX": str(low_high_avg[2])})
+
+
+@app.route("/api/v1.0/<start>/<end>")
+def start_to_end_date(start, end):
+    # Create our session (link) from Python to the DB
+    session = Session(engine)
+
+    """start date"""
+    # Return a JSON list of the minimum temperature, the average temperature,
+    # and the maximum temperature for a specified start or start-end range.
+    low_high_avg = session.query(func.min(Measurements.tobs), \
+                                 func.max(Measurements.tobs), \
+                                 func.avg(Measurements.tobs)) \
+                          .filter(Measurements.date > start)\
+                          .filter(Measurements.date < end).first()
+
+    session.close()
+
+    return jsonify({"TMIN": str(low_high_avg[0]),
+                    "TAVG": str(low_high_avg[1]),
+                    "TMAX": str(low_high_avg[2])})
 
 
 if __name__ == '__main__':

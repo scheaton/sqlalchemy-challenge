@@ -1,6 +1,3 @@
-class_activities/
-Instructions/
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

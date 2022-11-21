@@ -19,13 +19,14 @@ Base = automap_base()
 Base.prepare(engine, reflect=True)
 
 # Save reference to the table
-Stations = Base.classes.station
-Measurements = Base.classes.measurement
+station_table = Base.classes.station # "station_table" rather than "station" to avoid using a keyword
+measurement = Base.classes.measurement
 
 # Flask Setup
 app = Flask(__name__)
 
 
+#################################################
 # Flask Routes
 #################################################
 
@@ -37,6 +38,7 @@ def welcome():
         "<strong>*input dates as yyyy-mm-dd</strong><br/>"
         f"/api/v1.0/precipitation<br/>"
         f"/api/v1.0/stations<br/>"
+        f"/api/v1.0/tobs<br/>"
         f"/api/v1.0/&ltstart><br/>"
         f"/api/v1.0/&ltstart>/&ltend>"
     )
@@ -47,12 +49,13 @@ def precipitations():
     session = Session(engine)
 
     """precipitation"""
-    # Convert the query results from your precipitation analysis (i.e. retrieve only the last 12 months of data)
-    # to a dictionary using date as the key and prcp as the value.
-    results = session.query(Measurements.date, Measurements.prcp)\
-                     .filter(Measurements.date > '2016-08-23')\
-                     .order_by(Measurements.date).all()
+    # Query last 12 months of precipitation data from all stations
+    results = session.query(measurement.date, measurement.prcp)\
+                     .filter(measurement.date > '2016-08-23')\
+                     .order_by(measurement.date).all()
 
+    # Create a dictionary with the date as the key and the value as the precipitation from the row data
+    # and append to a list of all_precipitations
     all_precipitations = []
     for date, prcp, in results:
         precipitation_dict = {}
@@ -61,6 +64,7 @@ def precipitations():
     
     session.close()
 
+    # Return JSON 
     return jsonify(all_precipitations)
 
 
@@ -69,11 +73,9 @@ def stations():
     # Create our session (link) from Python to the DB
     session = Session(engine)
 
-    """Return a JSON list of stations from the dataset."""
-    # Query all Stations
-    results = session.query(Stations.station, Stations.name, Stations.latitude, Stations.longitude, Stations.elevation).all()
-
-    session.close()
+    """stations"""
+    # Query all stations
+    results = session.query(station_table.station, station_table.name, station_table.latitude, station_table.longitude, station_table.elevation).all()
 
     # Create a dictionary from the row data and append to a list of all_stations
     all_stations = []
@@ -86,6 +88,8 @@ def stations():
         station_dict["elevation"] = elevation
         all_stations.append(station_dict)
 
+    session.close()
+
     return jsonify(all_stations)
 
 
@@ -94,20 +98,20 @@ def tobs():
     # Create our session (link) from Python to the DB
     session = Session(engine)
 
-    """Return a JSON list of tobs from the dataset."""
+    """tobs"""
     # Query the dates and temperature observations of the most-active station for the previous year of data.
-    results = session.query(Measurements.date, Measurements.tobs)\
-                     .filter(Measurements.date > '2016-08-23')\
-                     .order_by(Measurements.date).all()
+    results = session.query(measurement.date, measurement.tobs)\
+                     .filter(measurement.date > '2016-08-23')\
+                     .order_by(measurement.date).all()
 
     session.close()
 
-    # Create a dictionary from the row data and append to a list of all_tobs
+    # Create a dictionary with the date as the key and the value as the tobs from the row data
+    # and append to a list of all_tobs
     all_tobs = []
     for date, tobs in results:
         tobs_dict = {}
-        tobs_dict["date"] = date
-        tobs_dict["tobs"] = tobs
+        tobs_dict[date] = tobs
         all_tobs.append(tobs_dict)
 
     return jsonify(all_tobs)
@@ -119,18 +123,18 @@ def start_date(start):
     session = Session(engine)
 
     """start date"""
-    # Return a JSON list of the minimum temperature, the average temperature,
-    # and the maximum temperature for a specified start or start-end range.
-    low_high_avg = session.query(func.min(Measurements.tobs), \
-                                 func.max(Measurements.tobs), \
-                                 func.avg(Measurements.tobs)) \
-                          .filter(Measurements.date > start).first()
+    # Return a JSON list of the minimum temperature, average temperature,
+    # and maximum temperature since a specified start date
+    low_avg_high = session.query(func.min(measurement.tobs), \
+                                 func.avg(measurement.tobs), \
+                                 func.max(measurement.tobs)) \
+                          .filter(measurement.date >= start).first()
 
     session.close()
 
-    return jsonify({"TMIN": str(low_high_avg[0]),
-                    "TAVG": str(low_high_avg[1]),
-                    "TMAX": str(low_high_avg[2])})
+    return jsonify({"TMIN": str(low_avg_high[0]),
+                    "TAVG": str(low_avg_high[1]),
+                    "TMAX": str(low_avg_high[2])})
 
 
 @app.route("/api/v1.0/<start>/<end>")
@@ -138,20 +142,20 @@ def start_to_end_date(start, end):
     # Create our session (link) from Python to the DB
     session = Session(engine)
 
-    """start date"""
-    # Return a JSON list of the minimum temperature, the average temperature,
-    # and the maximum temperature for a specified start or start-end range.
-    low_high_avg = session.query(func.min(Measurements.tobs), \
-                                 func.max(Measurements.tobs), \
-                                 func.avg(Measurements.tobs)) \
-                          .filter(Measurements.date > start)\
-                          .filter(Measurements.date < end).first()
+    """start to end"""
+    # Return a JSON list of the minimum temperature, average temperature,
+    # and maximum temperature for a specified start-end range.
+    low_avg_high = session.query(func.min(measurement.tobs), \
+                                 func.avg(measurement.tobs), \
+                                 func.max(measurement.tobs)) \
+                          .filter(measurement.date >= start)\
+                          .filter(measurement.date <= end).first()
 
     session.close()
 
-    return jsonify({"TMIN": str(low_high_avg[0]),
-                    "TAVG": str(low_high_avg[1]),
-                    "TMAX": str(low_high_avg[2])})
+    return jsonify({"TMIN": str(low_avg_high[0]),
+                    "TAVG": str(low_avg_high[1]),
+                    "TMAX": str(low_avg_high[2])})
 
 
 if __name__ == '__main__':
